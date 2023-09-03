@@ -8,22 +8,13 @@ from rembg import remove
 app = Flask(__name__)
 
 class BackgroundRemover:
-    def __init__(self, input_folder, output_folder):
-        self.input_folder = input_folder
+    def __init__(self, output_folder):
         self.output_folder = output_folder
 
-    def remove_background(self, input_path, output_path):
-        with open(input_path, "rb") as inp, open(output_path, "wb") as outp:
-            background_output = remove(inp.read())
+    def remove_background(self, input_data, output_path):
+        with open(output_path, "wb") as outp:
+            background_output = remove(input_data.read())
             outp.write(background_output)
-
-    def move_original(self, input_path, dest_path):
-        originals_folder = os.path.join(dest_path, 'originals')
-        os.makedirs(originals_folder, exist_ok=True)
-
-        filename = os.path.basename(input_path)
-        new_path = os.path.join(originals_folder, filename)
-        os.rename(input_path, new_path)
 
 @app.route('/')
 def index():
@@ -36,9 +27,8 @@ def index():
 
 @app.route('/process', methods=['POST'])
 def process_images():
-    input_folder = 'input'
     output_folder = 'output'
-    remover = BackgroundRemover(input_folder, output_folder)
+    remover = BackgroundRemover(output_folder)
 
     if 'file' not in request.files:
         return jsonify({'error': 'No se ha proporcionado un archivo'}), 400
@@ -53,15 +43,10 @@ def process_images():
         processed_folder = os.path.join(output_folder, today)
         os.makedirs(processed_folder, exist_ok=True)
 
-        input_path = os.path.join(input_folder, file.filename)
         output_path = os.path.join(processed_folder, file.filename)
 
-        # Guarda el archivo en la carpeta de entrada
-        file.save(input_path)
-
-        # Elimina el fondo y mueve el archivo original
-        remover.remove_background(input_path, output_path)
-        remover.move_original(input_path, processed_folder)
+        # Elimina el fondo y guarda el archivo directamente
+        remover.remove_background(file, output_path)
 
         # Comprime las imágenes procesadas en un archivo ZIP
         zip_filename = f'{today}_processed_images.zip'

@@ -20,7 +20,7 @@ class BackgroundRemover:
 def index():
     return '''
     <form method="POST" action="/process" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".png, .jpg, .jpeg">
+        <input type="file" name="files[]" accept=".png, .jpg, .jpeg" multiple>
         <input type="submit" value="Procesar">
     </form>
     '''
@@ -30,37 +30,34 @@ def process_images():
     output_folder = 'output'
     remover = BackgroundRemover(output_folder)
 
-    if 'file' not in request.files:
-        return jsonify({'error': 'No se ha proporcionado un archivo'}), 400
+    if 'files[]' not in request.files:
+        return jsonify({'error': 'No se han proporcionado archivos'}), 400
 
-    file = request.files['file']
+    files = request.files.getlist('files[]')
 
-    if file.filename == '':
-        return jsonify({'error': 'Nombre de archivo vacío'}), 400
+    if not files:
+        return jsonify({'error': 'No se han proporcionado archivos'}), 400
 
-    if file:
-        today = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-        processed_folder = os.path.join(output_folder, today)
-        os.makedirs(processed_folder, exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+    processed_folder = os.path.join(output_folder, today)
+    os.makedirs(processed_folder, exist_ok=True)
+
+    zip_filename = f'{today}_processed_images.zip'
+    zip_buffer = io.BytesIO()
+
+    for file in files:
+        if file.filename == '':
+            continue
 
         output_path = os.path.join(processed_folder, file.filename)
-
-        # Elimina el fondo y guarda el archivo directamente
         remover.remove_background(file, output_path)
 
         # Comprime las imágenes procesadas en un archivo ZIP
-        zip_filename = f'{today}_processed_images.zip'
-        zip_buffer = io.BytesIO()  # Crear el objeto BytesIO aquí
+        with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(output_path, os.path.basename(output_path))
 
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            processed_folder = os.path.join(output_folder, today)
-            for root, _, files in os.walk(processed_folder):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    zipf.write(file_path, os.path.relpath(file_path, processed_folder))
-
-        zip_buffer.seek(0)
-        return send_file(zip_buffer, as_attachment=True, download_name=zip_filename)
+    zip_buffer.seek(0)
+    return send_file(zip_buffer, as_attachment=True, download_name=zip_filename)
 
 if __name__ == '__main__':
     app.run(debug=True)
